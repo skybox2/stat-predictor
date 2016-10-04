@@ -1,5 +1,6 @@
 from stattlepy import Stattleship
 import sqlite3
+from datetime import datetime, timedelta
 
 
 # Stattleship-SPECIFIC CONSTANTS
@@ -26,7 +27,7 @@ def populateRoster():
 		team text, position text, slug text, id text PRIMARY KEY)''')
 	conn.commit()
 	# Loop through each team in team_slugs
-	for team in team_slugs.keys():
+	for team in team_slugs:
 		# player_records will contain all of the team's player records to be inserted
 		# into roster at end of for loop
 		player_records = []
@@ -63,10 +64,18 @@ def populateRoster():
 	conn.close()
 
 # This function builds the gamelog table, which contains record entries
-# for all game performances for all current players in the form:
+# for all game performances in the past year for all players in the form:
 # (player id, , , , , )
+# The function essentially works by stepping through one year of dates and
+# individually calling updateGameLog().
 def populateGameLog():
-	return None
+	# Starting with today, update the game log for each day and 
+	# decrement pointer by one day. End when pointer points to today one 
+	# year ago.
+	curr, step = datetime.now(), timedelta(days=1)
+	for i in range(366):
+		updateGameLog(curr - i * step)
+
 
 # This function adds player logs for games that happened on 
 # date - note that this function assumes that there is an existing
