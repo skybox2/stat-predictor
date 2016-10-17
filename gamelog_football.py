@@ -135,7 +135,7 @@ def updateGameLog(date=datetime.now(), conn=None):
 	# logRecords for each D/ST for each team for each game played on date
 	for dst in defensiveTeams:
 		defense = defensiveTeams[dst]
-		record = [dst, teamIds[dst], strDate, defense['opponent'], \
+		record = [dst, teamIds[dst], intDate, defense['opponent'], \
 		defense['home_away'], defense['points']]
 		print "Finished " + record[1] + "."
 		logRecords += [record]
