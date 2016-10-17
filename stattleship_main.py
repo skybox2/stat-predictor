@@ -6,8 +6,10 @@ import extract_train
 # Currently implemented options for command line argument
 # usage
 actions = {'roster': roster_football.populateRoster,
-		  'gamelog': gamelog_football.updateGameLog,
-		  'populategl': gamelog_football.populateGameLog
+		  'gamelog': gamelog_football.ugl,
+		  'populategl': gamelog_football.pgl,
+		  'xmain': extract_train.main,
+		  'xsql': extract_train.xsql
 		  }
 
 parser = argparse.ArgumentParser(description='Tell stat-predictor what you want to do.')
