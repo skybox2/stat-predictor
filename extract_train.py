@@ -13,6 +13,8 @@ def featureVector(player, infoDict):
 	result += [yearAverageFeature(player, infoDict)]
 	# ADD: Average over 5 most recent games
 	result += [rollingAverageFeature(player, infoDict)]
+	# ADD: Average over 2 most recent games 
+	result += [rollingAverageTwoGames(player, infoDict)]
 	# ADD: Average over season vs. opponent
 	result += [opponentAverageFeature(player, infoDict)]
 	# ADD: Average over season when home/away
@@ -31,8 +33,7 @@ def yearAverageFeature(player, infoDict):
 	conn = sqlite3.connect('nfl.db')
 	c = conn.cursor()
 	# Query gamelog for average points scored by player over past year
-	sqlStmt = "SELECT AVG(points_scored) FROM gamelog WHERE player_slug=\"" + player
-	sqlStmt += "\" AND date BETWEEN " + strEnd + " AND " + strStart
+	sqlStmt = "SELECT AVG(points_scored) FROM gamelog WHERE player_slug=\"" + player + "\""
 	c.execute(sqlStmt)
 	# Return query results
 	result = c.fetchone()[0]
@@ -48,13 +49,28 @@ def rollingAverageFeature(player, infoDict):
 	c = conn.cursor()
 	# Query gamelog for average points scored by player over 5 most recent games
 	# since date
-	sqlStmt = "SELECT AVG(points_scored) FROM gamelog WHERE player_slug=\"" + player
-	sqlStmt += "\" AND date  <=" + strDate + " ORDER BY date DESC LIMIT 5"
+	sqlStmt = "SELECT AVG(points_scored) FROM (SELECT * FROM gamelog WHERE player_slug=\"" + player + "\" ORDER BY date DESC LIMIT 5)"
 	c.execute(sqlStmt)
 	# Return query results
 	result = c.fetchone()[0]
 	conn.close()
 	return result
+
+def rollingAverageTwoGames(player, infoDict):
+	#Get correct format of date for SQLite querty
+	strDate = infoDict['date'].strftime('%Y%m%d')
+	# Open DB connection
+	conn = sqlite3.connect('nfl.db')
+	c = conn.cursor()
+	# Query gamelog for average points scored by player over 5 most recent games
+	# since date
+	sqlStmt = "SELECT AVG(points_scored) FROM (SELECT * FROM gamelog WHERE player_slug=\"" + player + "\" ORDER BY date DESC LIMIT 2)"
+	c.execute(sqlStmt)
+	# Return query results
+	result = c.fetchone()[0]
+	conn.close()
+	return result
+
 
 # Average for player against infoDict['opponent']
 def opponentAverageFeature(player, infoDict):
@@ -95,6 +111,10 @@ def main():
 	player = 'nfl-cam-newton'
 	infoDict = {'date': datetime.now(), 'opponent': 'nfl-den', 'home_away': 'home'}
 	print featureVector(player, infoDict)
+
+	player2 = 'nfl-antonio-brown'
+	infoDict2 = {'date': datetime.now(), 'opponent':'nfl-mia', 'home_away':'away'}
+	print featureVector(player2, infoDict2)
 
 # For command line access to SQLite3 table
 def sqlInteract():

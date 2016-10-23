@@ -1,6 +1,6 @@
 from stattlepy import Stattleship
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import numpy as np
 
 
@@ -34,7 +34,11 @@ def populateGameLog():
 	# decrement pointer by one day. End when pointer points to today one 
 	# year ago.
 	curr, step = datetime.now(), timedelta(days=1)
-	for i in range(366):
+	#Only include games in the game log from this season 
+	start_of_season = date(2016, 9, 8)
+	iterable_days = (date.today() - start_of_season).days
+	print("Number of days since start of season is :" + str(iterable_days))
+	for i in range(iterable_days+1):
 		# Determine whether there are already records in gamelog on
 		# the currDate (curr - i * step) and set equal to recordsExist
 		currDate = curr - i * step
