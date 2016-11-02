@@ -19,6 +19,9 @@ def featureVector(player, infoDict):
 	result += [opponentAverageFeature(player, infoDict)]
 	# ADD: Average over season when home/away
 	result += [homeAwayAverageFeature(player, infoDict)]
+
+	"""Add other features including attempts, carries, targets, passing TDs, 
+	rushing TDs, Redzone targets??"""
 	# Add features below
 	return np.array(result)
 
@@ -49,7 +52,8 @@ def rollingAverageFeature(player, infoDict):
 	c = conn.cursor()
 	# Query gamelog for average points scored by player over 5 most recent games
 	# since date
-	sqlStmt = "SELECT AVG(points_scored) FROM (SELECT * FROM gamelog WHERE player_slug=\"" + player + "\" ORDER BY date DESC LIMIT 5)"
+	sqlStmt = "SELECT AVG(points_scored) FROM (SELECT * FROM gamelog WHERE \
+		player_slug=\"" + player + "\" ORDER BY date DESC LIMIT 5)"
 	c.execute(sqlStmt)
 	# Return query results
 	result = c.fetchone()[0]
@@ -64,7 +68,8 @@ def rollingAverageTwoGames(player, infoDict):
 	c = conn.cursor()
 	# Query gamelog for average points scored by player over 5 most recent games
 	# since date
-	sqlStmt = "SELECT AVG(points_scored) FROM (SELECT * FROM gamelog WHERE player_slug=\"" + player + "\" ORDER BY date DESC LIMIT 2)"
+	sqlStmt = "SELECT AVG(points_scored) FROM (SELECT * FROM gamelog WHERE \
+		player_slug=\"" + player + "\" ORDER BY date DESC LIMIT 2)"
 	c.execute(sqlStmt)
 	# Return query results
 	result = c.fetchone()[0]

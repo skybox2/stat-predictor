@@ -153,7 +153,7 @@ def calculateFantasyPoints(log, isOffensive):
 			int(log['passes_yards_gross'] >= 300),
 			log['interceptions_total'],
 			log['rushes_yards'],
-			log['total_touchdowns'] - log['passes_touchdowns'],
+			log['total_touchdowns'],
 			int(log['rushes_yards'] >= 100),
 			log['receptions_yards'],
 			log['receptions_total'],
