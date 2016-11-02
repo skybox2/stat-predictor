@@ -1,81 +1,33 @@
 from stattlepy import Stattleship
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import numpy as np
 
 
 # Stattleship-SPECIFIC CONSTANTS
-access_token = "d49525fb16260a10a902f32b33aaa172"
+accessToken = "d49525fb16260a10a902f32b33aaa172"
 # NFL-SPECIFIC CONSTANTS
-offensive_positions = ['QB', 'RB', 'WR', 'TE']
-current_season = "nfl-2016-2017"
-
-
-# This function builds the roster table, which contains record entries
-# for all current players of all teams in the form:
-# (first name, last name, team slug, position, player slug, player id)
-def populateRoster():
-	# Query stattleship for NFL teams
-	new_query = Stattleship()
-	token = new_query.set_token(access_token)
-	teams = new_query.ss_get_results(sport='football',league='nfl',ep='teams')
-	# Construct dictionary of all team_slugs and each matching team_id
-	team_slugs = {item['slug'] : item['id'] for item in teams[0]['teams']}
-	# Open DB connection and create roster table
-	conn = sqlite3.connect('nfl.db')
-	c = conn.cursor()
-	c.execute('''CREATE TABLE IF NOT EXISTS roster (first text, last text,
-		team text, position text, player_slug text, player_id text PRIMARY KEY)''')
-	conn.commit()
-	# Loop through each team in team_slugs
-	for team in team_slugs:
-		# player_records will contain all of the team's player records to be inserted
-		# into roster at end of for loop
-		player_records = []
-		# Want to look at all valid pages of players for a given team
-		for index in range(1, 30):
-			# Query stattleship for a page of team's roster
-			page = new_query.ss_get_results(sport='football',league='nfl', \
-			ep='players', team_id=team, season_id=current_season, page=str(index))
-			page_of_players = page[0]['players']
-			# If there are no more players to consider, move to next team
-			if not page_of_players:
-				break
-			# Loop through each player on page
-			for player in page_of_players:
-				# If player should be considered, add his record to be inserted
-				if player['position_abbreviation'] in offensive_positions:
-					record = (player['first_name'], player['last_name'], \
-						team, player['position_abbreviation'], player['slug'], \
-						player['id'])
-					player_records += [record]
-		# Create one record for team's D/ST
-		defense = (team, 'D/ST', team, 'D/ST', team, team_slugs[team])
-		player_records += [defense]
-		# Insert team's player records, commit
-		sql_stmt = "INSERT OR REPLACE INTO roster VALUES (?, ?, ?, ?, ?, ?)"
-		c.executemany(sql_stmt, player_records)
-		conn.commit()
-		print "Done with team " + team + ". "
-	# Compute the number of records added within for loops
-	c.execute("SELECT COUNT(*) FROM roster")
-	num_records = c.fetchone()[0]
-	print "There are " + str(num_records) + " records in the roster table."
-	# Upon looping through all teams, close DBconnection
-	conn.close()
+offensivePositions = ['QB', 'RB', 'WR', 'TE']
+currentSeason = "nfl-2016-2017"
 
 # This function builds the gamelog table, which contains record entries
 # for all game performances in the past year for all players in the form:
 # (player id, , , , , )
 # The function essentially works by stepping through one year of dates and
 # individually calling updateGameLog().
+# WARNING: IF YOU WANT TO FULLY REPOPULATE THE GAME LOG, YOU MUST DELETE NFL.DB
+# This function will only pull data for a date if it looks into nfl.db and 
+# verifies that zero records exist for the date. This is in order to save time
+# and eliminate redundant expensive calls. It also allows a user to call pgl()
+# and quit as many times as wanted without having to re-do progress.
 def populateGameLog():
 	# Open DB connection and create gamelog table
 	conn = sqlite3.connect('nfl.db')
 	c = conn.cursor()
-	c.execute('''CREATE TABLE IF NOT EXISTS gamelog (player_id text,
-		player_slug text, date text, opponent_slug text, home_away text,
-		points_scored integer) ''')
+	c.execute('''CREATE TABLE IF NOT EXISTS gamelog (player_id TEXT,
+		player_slug TEXT, date INTEGER, opponent_slug TEXT, home_away TEXT,
+		points_scored REAL, pass_completions INTEGER, passer_rating REAL, 
+		pass_touchdowns INTEGER, PRIMARY KEY(player_slug, date)) ''')
 	conn.commit()
 	# sql ='SET SESSION max_allowed_packet=500M'
 	# c.execute(sql)
@@ -83,15 +35,29 @@ def populateGameLog():
 	# decrement pointer by one day. End when pointer points to today one 
 	# year ago.
 	curr, step = datetime.now(), timedelta(days=1)
-	for i in range(366):
-		log_records = updateGameLog(curr - i * step, conn)
-		sql_stmt = "INSERT OR REPLACE INTO gamelog VALUES (?, ?, ?, ?, ?, ?)"
-		c.executemany(sql_stmt, log_records)
-		conn.commit()
+	#Only include games in the game log from this season 
+	start_of_season = date(2016, 9, 8)
+	iterable_days = (date.today() - start_of_season).days
+	print("Number of days since start of season is :" + str(iterable_days))
+	for i in range(iterable_days+1):
+		# Determine whether there are already records in gamelog on
+		# the currDate (curr - i * step) and set equal to recordsExist
+		currDate = curr - i * step
+		sqlStmt = "SELECT COUNT(*) FROM gamelog WHERE date = " + currDate \
+		.strftime('%Y%m%d')
+		c.execute(sqlStmt)
+		recordsExist = (c.fetchone()[0] != 0)
+		# Add records for currDate to gamelog only if they do not exist
+		# in gamelog already
+		if not recordsExist:
+			logRecords = updateGameLog(currDate, conn)
+			sqlStmt = "INSERT OR REPLACE INTO gamelog VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+			c.executemany(sqlStmt, logRecords)
+			conn.commit()
 	# Compute the number of records added to gamelogs
 	c.execute("SELECT COUNT(*) FROM gamelog")
-	num_records = c.fetchone()[0]
-	print "There are " + str(num_records) + " records in the gamelog table."
+	numRecords = c.fetchone()[0]
+	print "There are " + str(numRecords) + " records in the gamelog table."
 	# Upon looping through all teams, close DBconnection
 	conn.close()
 
@@ -100,32 +66,38 @@ def populateGameLog():
 # gamelog table that has been populated with populateGameLog(), and
 # that this function solely exists to incrementally add recent logs 
 # to an existing log table.
-def updateGameLog(date, conn=None):
+def updateGameLog(date=datetime.now(), conn=None):
 	# Generate cursor for database connection if c=None
 	if not conn:
 		conn = sqlite3.connect('nfl.db')
 	c = conn.cursor()
 	# Convert date (datetime) into string 'yyyy-mm-dd'
-	strdate = date.strftime('%Y-%m-%d')
+	strDate = date.strftime('%Y-%m-%d')
+	print "================= WORKING ON DATE " + strDate + " ================="
+	# Convert date (datetime) into int yyyymmdd for SQLite sorting
+	# purposes
+	intDate = int(date.strftime('%Y%m%d'))
 	# Query stattleship for NFL teams
-	new_query = Stattleship()
-	token = new_query.set_token(access_token)
-	teams = new_query.ss_get_results(sport='football',league='nfl',ep='teams')
-	# Construct dictionary of all team_ids and each matching team_slug
-	team_ids = {item['id'] : item['slug'] for item in teams[0]['teams']}
-	# log_records will contain all of the date's game logs to be inserted
+	newQuery = Stattleship()
+	token = newQuery.set_token(accessToken)
+	teams = newQuery.ss_get_results(sport='football',league='nfl',ep='teams')
+	# Construct dictionary of all team ids and each matching team slug
+	teamIds = {item['id'] : item['slug'] for item in teams[0]['teams']}
+	# Construct dictionary of all team slugs and each matching team id
+	teamSlugs = {item['slug'] : item['id'] for item in teams[0]['teams']}
+	# logRecords will contain all of the date's game logs to be inserted
 	# into gamelog at end of for loop
-	log_records = []
+	logRecords = []
 	# One D/ST record is entered into gamelog for each team that plays
 	# on date. At the end of the for loop, each entry in 
-	# defensive_teams is added to log_records before it is inserted
+	# defensiveTeams is added to logRecords before it is inserted
 	# into gamelog
-	defensive_teams = {}
+	defensiveTeams = {}
 	# Loop through all valid pages of game logs for a given day
 	for index in range(1, 1000):
 		# Query stattleship for a page of date's game logs
-		page = new_query.ss_get_results(sport='football',league='nfl', \
-		ep='game_logs', on=strdate, page=str(index))
+		page = newQuery.ss_get_results(sport='football',league='nfl', \
+		ep='game_logs', on=strDate, page=str(index))
 		logs = page[0]['game_logs']
 		# If there are no more logs to consider, then break
 		if not logs:
@@ -133,55 +105,57 @@ def updateGameLog(date, conn=None):
 		players = page[0]['players']
 		for curr in range(len(logs)):
 			# These are the current log entry and its associated player
-			curr_log, curr_player = logs[curr], players[curr]
+			currLog, currPlayer = logs[curr], players[curr]
 			# Determine player id, slug, position, and team 
-			[id, slug, pos, team_id] = [curr_player[key] for key \
+			[id, slug, pos, teamId] = [currPlayer[key] for key \
 			in ('id', 'slug', 'position_abbreviation', 'team_id')]
 			# For fantasy point calculation purposes, we must determine
 			# whether the player is an offensive player; if not, the player's
 			# points must be summed with all other defensive players'
 			# contributions
-			isOffensive = (pos in offensive_positions)
+			isOffensive = (pos in offensivePositions)
 			# Utilize helper function to calculate the player's fantasy points
 			# scored in date's game, or their contribution to the team's D/ST
 			# fantasy point total
-			curr_points = calculateFantasyPoints(curr_log, isOffensive)
+			currPoints = calculateFantasyPoints(currLog, isOffensive)
 			# If the player is not offensive, add his contributions to the
-			# running total of his team's defensive fantasy point total
-			if not isOffensive:
-				# If team_id is not already stored in defensive_teams,
-				# instantiate the dictionary for team_id and populate its
+			# running total of his team's defensive fantasy point total.
+			# Checking whether teamId is in teamIds is to prevent errors
+			if not isOffensive and teamId in teamIds:
+				# If teamId is not already stored in defensiveTeams,
+				# instantiate the dictionary for teamId and populate its
 				# opponent and home_away entries using current log
-				if team_id not in defensive_teams:
-					defensive_teams[team_id] = {'points': 0, 
-					'opponent': team_ids[curr_log['opponent_id']], 
-					'home_away': 'home' if curr_log['is_home_team'] else 'away'}
-				defensive_teams[team_id]['points'] += curr_points
-			# If the player is offensive, add his log record to log_records
+				if teamId not in defensiveTeams:
+					defensiveTeams[teamId] = {'points': 0, 
+					'opponent': teamIds[currLog['opponent_id']], 
+					'home_away': 'home' if currLog['is_home_team'] else 'away'}
+				defensiveTeams[teamId]['points'] += currPoints
+			# If the player is offensive, add his log record to logRecords
 			else:
-				record = [id, slug, strdate, team_ids[curr_log['opponent_id']], \
-				'home' if curr_log['is_home_team'] else 'away', curr_points]
-				print record
-				log_records += [record]
-	# Now loop through each entry in defensive_teams and add a record to 
-	# log_records for each D/ST for each team for each game played on date
-	for dst in defensive_teams:
-		defense = defensive_teams[dst]
-		record = [dst, team_ids[dst], strdate, defense['opponent'], \
-		defense['home_away'], defense['points']]
-		print record
-		log_records += [record]
-	return log_records
+				record = [id, slug, intDate, teamIds[currLog['opponent_id']], \
+				'home' if currLog['is_home_team'] else 'away', currPoints, \
+				 currLog['passes_completions'], currLog['passer_rating'], currLog['passes_touchdowns']]
+				print "Finished " + record[1] + " " + pos + "."
+				logRecords += [record]
+	# Now loop through each entry in defensiveTeams and add a record to 
+	# logRecords for each D/ST for each team for each game played on date
+	for dst in defensiveTeams:
+		defense = defensiveTeams[dst]
+		record = [dst, teamIds[dst], intDate, defense['opponent'], \
+		defense['home_away'], defense['points'], 0, 0, 0]
+		print "Finished " + record[1] + "."
+		logRecords += [record]
+	return logRecords
 
 def calculateFantasyPoints(log, isOffensive):
 	if isOffensive:
-		x_vector = np.array([
+		xVector = np.array([
 			log['passes_touchdowns'],
 			log['passes_yards_gross'],
 			int(log['passes_yards_gross'] >= 300),
 			log['interceptions_total'],
 			log['rushes_yards'],
-			log['total_touchdowns'] - log['passes_touchdowns'],
+			log['total_touchdowns'],
 			int(log['rushes_yards'] >= 100),
 			log['receptions_yards'],
 			log['receptions_total'],
@@ -190,12 +164,12 @@ def calculateFantasyPoints(log, isOffensive):
 			log['receiving_2pt_conversions_succeeded'] + \
 			log['passing_2pt_conversions_succeeded'] + \
 			log['rushing_2pt_conversions_succeeded']])
-		w_vector = np.array([4., .04, 3., -1., 0.1, 6., 3., \
+		wVector = np.array([4., .04, 3., -1., 0.1, 6., 3., \
 			0.1, 1., 3., -1., 2.])
-		return np.dot(x_vector, w_vector)
+		return np.dot(xVector, wVector)
 	else:
-		opp_score = log['opponent_score']
-		x_vector = np.array([
+		oppScore = log['opponent_score']
+		xVector = np.array([
 			log['sacks_total'],
 			log['interceptions_total'],
 			log['fumbles_opposing_recovered'],
@@ -206,13 +180,16 @@ def calculateFantasyPoints(log, isOffensive):
 			log['safeties'],
 			log['field_goals_blocked'],
 			log['extra_points_made'],
-			int(opp_score == 0),
-			int(opp_score >= 1 and opp_score <= 6),
-			int(opp_score >= 7 and opp_score <= 13),
-			int(opp_score >= 14 and opp_score <= 20),
-			int(opp_score >= 21 and opp_score <= 27),
-			int(opp_score >= 28 and opp_score <= 34),
-			int(opp_score >= 35)])
-		w_vector = np.array([1., 2., 2., 6., 6., 6., 2., 2., \
+			int(oppScore == 0),
+			int(oppScore >= 1 and oppScore <= 6),
+			int(oppScore >= 7 and oppScore <= 13),
+			int(oppScore >= 14 and oppScore <= 20),
+			int(oppScore >= 21 and oppScore <= 27),
+			int(oppScore >= 28 and oppScore <= 34),
+			int(oppScore >= 35)])
+		wVector = np.array([1., 2., 2., 6., 6., 6., 2., 2., \
 			2., 10., 7., 4., 1., 0., -1., -4.])
-		return np.dot(x_vector, w_vector)
+		return np.dot(xVector, wVector)
+
+ugl = updateGameLog
+pgl = populateGameLog

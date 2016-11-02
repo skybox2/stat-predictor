@@ -1,18 +1,18 @@
-import sys
+import argparse
 import gamelog_football
 import roster_football
+import extract_train
 
-# Check to make sure that only one command line argument
-# has been passed in to the main file 
-assert len(sys.argv) == 2
+# Currently implemented options for command line argument
+# usage
+actions = {'roster': roster_football.populateRoster,
+		  'gamelog': gamelog_football.ugl,
+		  'populategl': gamelog_football.pgl,
+		  'xmain': extract_train.main,
+		  'xsql': extract_train.xsql
+		  }
 
-if sys.argv[1] == "populateRoster":
-	stattleship_football.populateRoster()
-elif sys.argv[1] == "populateGameLog":
-	populate_update.populateGameLog()
-elif sys.argv[1] == "updateGameLog":
-	populate_update.updateGameLog()
-else:
-	print "Error: Invalid command line argument: "
-	print "Please run: \"python stattleship_main.py <method>\""
-	print "<method> = {populateRoster, populateGameLog, updateGameLog}"
+parser = argparse.ArgumentParser(description='Tell stat-predictor what you want to do.')
+parser.add_argument('action', type=str, choices=actions.keys())
+args = parser.parse_args()
+actions[args.action]()
