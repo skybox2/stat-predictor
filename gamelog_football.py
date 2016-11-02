@@ -26,7 +26,8 @@ def populateGameLog():
 	c = conn.cursor()
 	c.execute('''CREATE TABLE IF NOT EXISTS gamelog (player_id TEXT,
 		player_slug TEXT, date INTEGER, opponent_slug TEXT, home_away TEXT,
-		points_scored REAL, PRIMARY KEY(player_slug, date)) ''')
+		points_scored REAL, pass_completions INTEGER, passer_rating REAL, 
+		pass_touchdowns INTEGER, PRIMARY KEY(player_slug, date)) ''')
 	conn.commit()
 	# sql ='SET SESSION max_allowed_packet=500M'
 	# c.execute(sql)
@@ -50,7 +51,7 @@ def populateGameLog():
 		# in gamelog already
 		if not recordsExist:
 			logRecords = updateGameLog(currDate, conn)
-			sqlStmt = "INSERT OR REPLACE INTO gamelog VALUES (?, ?, ?, ?, ?, ?)"
+			sqlStmt = "INSERT OR REPLACE INTO gamelog VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 			c.executemany(sqlStmt, logRecords)
 			conn.commit()
 	# Compute the number of records added to gamelogs
@@ -132,7 +133,8 @@ def updateGameLog(date=datetime.now(), conn=None):
 			# If the player is offensive, add his log record to logRecords
 			else:
 				record = [id, slug, intDate, teamIds[currLog['opponent_id']], \
-				'home' if currLog['is_home_team'] else 'away', currPoints]
+				'home' if currLog['is_home_team'] else 'away', currPoints, \
+				 currLog['passes_completions'], currLog['passer_rating'], currLog['passes_touchdowns']]
 				print "Finished " + record[1] + " " + pos + "."
 				logRecords += [record]
 	# Now loop through each entry in defensiveTeams and add a record to 
@@ -140,7 +142,7 @@ def updateGameLog(date=datetime.now(), conn=None):
 	for dst in defensiveTeams:
 		defense = defensiveTeams[dst]
 		record = [dst, teamIds[dst], intDate, defense['opponent'], \
-		defense['home_away'], defense['points']]
+		defense['home_away'], defense['points'], 0, 0, 0]
 		print "Finished " + record[1] + "."
 		logRecords += [record]
 	return logRecords
